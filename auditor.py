@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -32,6 +33,61 @@ def normalize_path(value: str) -> str:
     while path.startswith("./"):
         path = path[2:]
     return str(PurePosixPath(path)).casefold()
+
+
+def collect_git_evidence(repo_path: str) -> list[dict[str, Any]]:
+    """Read changed paths from a local Git working tree without reading file contents."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("Git was not found. Install Git and make sure it is on PATH.") from exc
+    except subprocess.CalledProcessError as exc:
+        message = exc.stderr.decode(errors="replace").strip()
+        raise ValueError(message or "Could not read Git status for that folder.") from exc
+
+    fields = result.stdout.split(b"\0")
+    evidence: list[dict[str, Any]] = []
+    index = 0
+    while index < len(fields):
+        record = fields[index]
+        index += 1
+        if not record:
+            continue
+        if len(record) < 4:
+            continue
+        status = record[:2].decode("ascii", errors="replace")
+        path = record[3:].decode(errors="replace")
+
+        if "R" in status or "C" in status:
+            operation = "modified"
+            old_path = fields[index].decode(errors="replace") if index < len(fields) else ""
+            index += bool(old_path)
+        elif "?" in status or "A" in status:
+            operation = "created"
+            old_path = ""
+        elif "D" in status:
+            operation = "deleted"
+            old_path = ""
+        else:
+            operation = "modified"
+            old_path = ""
+
+        item: dict[str, Any] = {
+            "type": "file_change",
+            "path": path,
+            "operation": operation,
+            "source": "local git status (working-tree snapshot)",
+            "git_status": status,
+        }
+        if old_path:
+            item["previous_path"] = old_path
+        evidence.append(item)
+
+    return evidence
 
 
 def audit_session(session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -76,8 +132,11 @@ def audit_session(session: dict[str, Any]) -> list[dict[str, Any]]:
                 if str(item.get("operation", "")).casefold() in allowed_operations
             ]
             if operation_matches:
-                status = "Confirmed by supplied evidence"
-                explanation = "A file-change record matches the claimed path and action."
+                status = "Evidence match"
+                explanation = (
+                    "A supplied file-change record matches the claimed path and action. "
+                    "A Git status snapshot does not identify who made the change."
+                )
                 supporting_records = operation_matches
             else:
                 status = "Unverified"

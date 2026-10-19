@@ -4,7 +4,7 @@ import json
 
 import streamlit as st
 
-from auditor import audit_session
+from auditor import audit_session, collect_git_evidence
 
 
 st.set_page_config(page_title="AI Action Auditor", page_icon="🔎", layout="wide")
@@ -13,9 +13,29 @@ st.caption("Check whether file-change claims in an AI session have matching evid
 
 st.info(
     "This first version checks file changes only. It compares assistant claims with "
-    "file-change records included in the uploaded JSON. Missing evidence means "
-    "**unverified**, not false. It does not inspect your computer or contact an AI service."
+    "records in the uploaded JSON and optional Git status evidence from a folder you select. "
+    "Missing evidence means **unverified**, not false. It does not read file contents or contact an AI service."
 )
+
+st.subheader("Collect evidence from a local Git project")
+st.caption(
+    "Reads changed file names and Git status only. It does not read file contents or identify who made a change."
+)
+repo_path = st.text_input("Local project folder", placeholder=r"C:\path\to\your\git-project")
+if st.button("Collect Git evidence"):
+    if not repo_path.strip():
+        st.error("Enter the folder path of a Git project first.")
+    else:
+        try:
+            st.session_state["git_evidence"] = collect_git_evidence(repo_path.strip())
+            st.success(f"Collected {len(st.session_state['git_evidence'])} changed-file record(s).")
+        except ValueError as exc:
+            st.error(str(exc))
+
+git_evidence = st.session_state.get("git_evidence", [])
+if git_evidence:
+    with st.expander("Review collected Git evidence"):
+        st.json(git_evidence)
 
 EXAMPLE = {
     "messages": [
@@ -43,22 +63,26 @@ with st.expander("See the expected JSON format"):
 
 uploaded = st.file_uploader("Choose a session JSON file", type=["json"])
 if uploaded is None:
-    st.write("Upload a JSON file to review its file-change claims.")
+    st.write("Upload a session JSON file to review its file-change claims. Collected Git evidence will be added to that session.")
     st.stop()
 
 try:
     session_data = json.load(uploaded)
     if not isinstance(session_data, dict):
         raise ValueError("The file must contain a JSON object at its top level.")
+    supplied_evidence = session_data.get("evidence", [])
+    if not isinstance(supplied_evidence, list):
+        raise ValueError("'evidence' must be a JSON list.")
+    session_data["evidence"] = supplied_evidence + git_evidence
     findings = audit_session(session_data)
 except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
     st.error(f"Could not read this session: {exc}")
     st.stop()
 
-confirmed = sum(item["status"].startswith("Confirmed") for item in findings)
-unverified = len(findings) - confirmed
+matched = sum(item["status"] == "Evidence match" for item in findings)
+unverified = len(findings) - matched
 left, right = st.columns(2)
-left.metric("Claims with matching records", confirmed)
+left.metric("Claims matched to evidence", matched)
 right.metric("Unverified claims", unverified)
 
 if not findings:
