@@ -68,11 +68,41 @@ with st.expander("See the expected JSON format"):
 
 uploaded = st.file_uploader("Choose a session JSON file", type=["json"])
 if uploaded is None:
-    st.write("Upload a JSON session or extracted ChatGPT conversations.json. Collected Git evidence will be added to it.")
+    st.write("Upload a JSON session or extracted ChatGPT conversations.json. Choose one conversation to review; collected Git evidence will be added to it.")
     st.stop()
 
 try:
-    session_data = normalize_chat_export(json.load(uploaded))
+    imported_data = normalize_chat_export(json.load(uploaded))
+    if "conversations" in imported_data:
+        conversations = imported_data["conversations"]
+        counts: dict[str, int] = {}
+        labels = []
+        for conversation in conversations:
+            title = conversation["title"]
+            counts[title] = counts.get(title, 0) + 1
+            labels.append(title)
+        seen_labels: dict[str, int] = {}
+        display_labels = []
+        for label in labels:
+            seen_labels[label] = seen_labels.get(label, 0) + 1
+            display_labels.append(
+                f"{label} ({seen_labels[label]})" if counts[label] > 1 else label
+            )
+        selected_index = st.selectbox(
+            "Choose a conversation to review",
+            options=range(len(conversations)),
+            format_func=lambda index: display_labels[index],
+        )
+        selected_conversation = conversations[selected_index]
+        session_data = {
+            "messages": selected_conversation["messages"],
+            "evidence": selected_conversation.get("evidence", []),
+        }
+        st.caption(
+            f"Reviewing {len(session_data['messages'])} text messages from “{selected_conversation['title']}”."
+        )
+    else:
+        session_data = imported_data
     supplied_evidence = session_data.get("evidence", [])
     if not isinstance(supplied_evidence, list):
         raise ValueError("'evidence' must be a JSON list.")

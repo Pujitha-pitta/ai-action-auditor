@@ -146,24 +146,30 @@ def normalize_chat_export(payload: Any) -> dict[str, Any]:
         return {"messages": payload["messages"], "evidence": payload.get("evidence", [])}
 
     conversations = payload if isinstance(payload, list) else [payload]
-    normalized_messages: list[dict[str, str]] = []
-    for conversation in conversations:
+    normalized_conversations: list[dict[str, Any]] = []
+    for conversation_index, conversation in enumerate(conversations, start=1):
         if not isinstance(conversation, dict):
             continue
         if isinstance(conversation.get("messages"), list):
-            normalized_messages.extend(
+            messages = [
                 message for message in conversation["messages"]
                 if isinstance(message, dict)
-            )
+            ]
         else:
-            normalized_messages.extend(_messages_from_export_conversation(conversation))
+            messages = _messages_from_export_conversation(conversation)
+        if not messages:
+            continue
+        title = conversation.get("title")
+        if not isinstance(title, str) or not title.strip():
+            title = f"Conversation {conversation_index}"
+        normalized_conversations.append({"title": title, "messages": messages, "evidence": []})
 
-    if not normalized_messages:
+    if not normalized_conversations:
         raise ValueError(
             "No supported text messages found. Upload the extracted ChatGPT conversations.json "
             "or a JSON session with a 'messages' list."
         )
-    return {"messages": normalized_messages, "evidence": []}
+    return {"conversations": normalized_conversations, "evidence": []}
 
 
 def collect_git_evidence(repo_path: str) -> list[dict[str, Any]]:

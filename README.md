@@ -58,4 +58,4 @@ The app processes the uploaded JSON and selected Git status locally and does not
 
 ## Use a ChatGPT data export
 
-Request an export in ChatGPT under **Settings → Data controls → Export data**, download the ZIP when it is ready, and extract it. Upload `conversations.json` in the app. If a large export contains numbered conversation JSON files instead, upload one of those files. The export may contain sensitive account and conversation data, so only use it on a computer you trust.
+Request an export in ChatGPT under **Settings → Data controls → Export data**, download the ZIP when it is ready, and extract it. Upload `conversations.json` in the app, then select one conversation by title. If a large export contains numbered conversation JSON files instead, upload one of those files. The export may contain sensitive account and conversation data, so only use it on a computer you trust.
