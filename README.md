@@ -9,8 +9,11 @@ A small, local-first prototype that checks file-change claims in an AI session a
 - Marks a claim **Unverified** when matching evidence is missing or the recorded action differs.
 - Shows the matching records and lets you download the findings as JSON.
 - Collects changed file names and statuses from a local Git working tree, including untracked files.
+- Flags selected potentially destructive command patterns in assistant messages.
 
 An **Evidence match** means the path and action match a record; it does not prove that the AI made the change. Git status does not identify who made a change. An unverified claim is not proof that the AI did not perform the action.
+
+Risk warnings currently cover a small set of patterns, including recursive deletion, hard Git reset, forced Git cleanup or push, SQL table/database deletion, and Terraform destroy. A warning means the text appeared in an assistant message; it does not mean the command was run.
 
 ## Run locally
 
@@ -29,7 +32,7 @@ To include current Git evidence, enter the path to a local Git project folder in
 
 ## Input format
 
-The prototype expects a JSON object with `messages` and `evidence` lists:
+The prototype expects a JSON object with `messages` and `evidence` lists. The `evidence` list can be empty if you are only reviewing command warnings:
 
 ```json
 {
@@ -47,7 +50,7 @@ The prototype expects a JSON object with `messages` and `evidence` lists:
 }
 ```
 
-Supported file actions include created, added, modified, updated, edited, changed, deleted, and removed. Other kinds of AI actions and unsupported message formats are outside this first version.
+Supported file actions include created, added, modified, updated, edited, changed, deleted, and removed. Other kinds of AI actions and unsupported message formats are outside this first version. Command scanning is rule-based and can miss risky commands or flag harmless examples; review warnings in context.
 
 ## Privacy and limitations
 

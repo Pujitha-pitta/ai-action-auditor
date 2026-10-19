@@ -4,7 +4,7 @@ import json
 
 import streamlit as st
 
-from auditor import audit_session, collect_git_evidence
+from auditor import audit_session, collect_git_evidence, detect_risky_commands
 
 
 st.set_page_config(page_title="AI Action Auditor", page_icon="🔎", layout="wide")
@@ -12,9 +12,9 @@ st.title("AI Action Auditor")
 st.caption("Check whether file-change claims in an AI session have matching evidence.")
 
 st.info(
-    "This first version checks file changes only. It compares assistant claims with "
-    "records in the uploaded JSON and optional Git status evidence from a folder you select. "
-    "Missing evidence means **unverified**, not false. It does not read file contents or contact an AI service."
+    "This prototype checks file-change claims and flags a small set of potentially destructive command patterns. "
+    "A command mentioned in chat is not proof that it ran. Optional Git status evidence comes from a folder you select. "
+    "It does not read repository file contents or contact an AI service."
 )
 
 st.subheader("Collect evidence from a local Git project")
@@ -74,6 +74,7 @@ try:
     if not isinstance(supplied_evidence, list):
         raise ValueError("'evidence' must be a JSON list.")
     session_data["evidence"] = supplied_evidence + git_evidence
+    risky_commands = detect_risky_commands(session_data)
     findings = audit_session(session_data)
 except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
     st.error(f"Could not read this session: {exc}")
@@ -81,13 +82,23 @@ except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
 
 matched = sum(item["status"] == "Evidence match" for item in findings)
 unverified = len(findings) - matched
-left, right = st.columns(2)
+left, middle, right = st.columns(3)
 left.metric("Claims matched to evidence", matched)
-right.metric("Unverified claims", unverified)
+middle.metric("Unverified claims", unverified)
+right.metric("Potentially risky commands", len(risky_commands))
 
-if not findings:
-    st.warning("No supported file-change claims were found in assistant messages.")
-else:
+if risky_commands:
+    st.subheader("Potentially risky commands mentioned")
+    st.warning(
+        "These command patterns appeared in assistant messages. This does not show that a command was run."
+    )
+    for item in risky_commands:
+        with st.expander(f"{item['severity']} · {item['category']}", expanded=True):
+            st.code(item["command_text"], language="powershell")
+            st.write(item["explanation"])
+            st.caption(f"Assistant message #{item['message_index'] + 1} · {item['status']}")
+
+if findings:
     st.subheader("Review findings")
     for finding in findings:
         title = f"{finding['status']} · {finding['path']}"
@@ -99,10 +110,17 @@ else:
                 for record in finding["evidence"]:
                     st.json(record)
 
-    report = json.dumps(findings, indent=2, ensure_ascii=False)
-    st.download_button(
-        "Download review as JSON",
-        data=report,
-        file_name="ai_action_audit.json",
-        mime="application/json",
-    )
+if not findings and not risky_commands:
+    st.warning("No supported file-change claims or flagged command patterns were found in assistant messages.")
+
+report = json.dumps(
+    {"file_change_claims": findings, "potentially_risky_commands": risky_commands},
+    indent=2,
+    ensure_ascii=False,
+)
+st.download_button(
+    "Download review as JSON",
+    data=report,
+    file_name="ai_action_audit.json",
+    mime="application/json",
+)

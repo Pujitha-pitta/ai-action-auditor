@@ -15,6 +15,51 @@ CLAIM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+RISKY_COMMAND_PATTERNS = [
+    (
+        "High",
+        "Recursive or forced deletion",
+        re.compile(r"(?im)^\s*(?:\$\s*)?rm\s+-[a-z]*r[a-z]*f[a-z]*\b[^\r\n]*|^\s*(?:\$\s*)?rm\s+-[a-z]*f[a-z]*r[a-z]*\b[^\r\n]*"),
+        "This command can recursively delete files without normal safeguards.",
+    ),
+    (
+        "High",
+        "Recursive PowerShell deletion",
+        re.compile(r"(?im)^\s*(?:PS>\s*)?Remove-Item\b[^\r\n]*(?:-Recurse|-Force)\b[^\r\n]*"),
+        "This PowerShell command can remove files or folders recursively or forcibly.",
+    ),
+    (
+        "High",
+        "Hard Git reset",
+        re.compile(r"(?im)^\s*(?:\$\s*)?git\s+reset\s+--hard\b[^\r\n]*"),
+        "This command discards tracked working-tree changes and resets files to a commit.",
+    ),
+    (
+        "High",
+        "Forced Git cleanup",
+        re.compile(r"(?im)^\s*(?:\$\s*)?git\s+clean\b[^\r\n]*-[a-z]*f[a-z]*[^\r\n]*"),
+        "This command can delete untracked files from the working tree.",
+    ),
+    (
+        "High",
+        "Force push",
+        re.compile(r"(?im)^\s*(?:\$\s*)?git\s+push\b[^\r\n]*(?:--force\b|\s-f(?:\s|$))[^\r\n]*"),
+        "A force push can overwrite commits on the remote branch.",
+    ),
+    (
+        "High",
+        "SQL deletion statement",
+        re.compile(r"(?im)^\s*(?:DROP\s+(?:DATABASE|TABLE)\b|TRUNCATE\s+TABLE\b)[^\r\n]*"),
+        "This SQL statement can remove a database, table, or its rows.",
+    ),
+    (
+        "High",
+        "Infrastructure destruction",
+        re.compile(r"(?im)^\s*(?:\$\s*)?terraform\s+destroy\b[^\r\n]*"),
+        "This command can destroy infrastructure managed by the selected Terraform configuration.",
+    ),
+]
+
 VERB_TO_OPERATION = {
     "created": {"created", "added"},
     "added": {"created", "added"},
@@ -154,4 +199,40 @@ def audit_session(session: dict[str, Any]) -> list[dict[str, Any]]:
                 "explanation": explanation,
                 "evidence": supporting_records,
             })
+    return findings
+
+
+def detect_risky_commands(session: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flag potentially destructive command text in assistant messages.
+
+    A match only means the command appeared in the message. It does not mean
+    that the command was executed or that any data was changed.
+    """
+    messages = session.get("messages", [])
+    if not isinstance(messages, list):
+        raise ValueError("'messages' must be a JSON list.")
+
+    findings: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
+    for message_index, message in enumerate(messages):
+        if not isinstance(message, dict) or str(message.get("role", "")).casefold() != "assistant":
+            continue
+        content = message.get("content", "")
+        if not isinstance(content, str):
+            continue
+        for severity, category, pattern, explanation in RISKY_COMMAND_PATTERNS:
+            for match in pattern.finditer(content):
+                command = match.group(0).strip()
+                key = (message_index, command.casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                findings.append({
+                    "severity": severity,
+                    "category": category,
+                    "command_text": command,
+                    "message_index": message_index,
+                    "status": "Potential risk mentioned; execution unverified",
+                    "explanation": explanation,
+                })
     return findings

@@ -7,6 +7,10 @@
     {
       "role": "assistant",
       "content": "I also edited `src/missing.py`."
+    },
+    {
+      "role": "assistant",
+      "content": "Example of a potentially risky command (not executed):\n```shell\ngit reset --hard\n```"
     }
   ],
   "evidence": [
