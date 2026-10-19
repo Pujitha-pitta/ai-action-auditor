@@ -4,7 +4,12 @@ import json
 
 import streamlit as st
 
-from auditor import audit_session, collect_git_evidence, detect_risky_commands
+from auditor import (
+    audit_session,
+    collect_git_evidence,
+    detect_risky_commands,
+    normalize_chat_export,
+)
 
 
 st.set_page_config(page_title="AI Action Auditor", page_icon="🔎", layout="wide")
@@ -12,9 +17,9 @@ st.title("AI Action Auditor")
 st.caption("Check whether file-change claims in an AI session have matching evidence.")
 
 st.info(
-    "This prototype checks file-change claims and flags a small set of potentially destructive command patterns. "
-    "A command mentioned in chat is not proof that it ran. Optional Git status evidence comes from a folder you select. "
-    "It does not read repository file contents or contact an AI service."
+    "This prototype reviews supported ChatGPT export JSON or the app's simple JSON format. It checks file-change claims "
+    "and flags selected potentially destructive command patterns. A command mentioned in chat is not proof that it ran. "
+    "Optional Git status evidence comes from a folder you select. It does not read repository file contents or contact an AI service."
 )
 
 st.subheader("Collect evidence from a local Git project")
@@ -63,13 +68,11 @@ with st.expander("See the expected JSON format"):
 
 uploaded = st.file_uploader("Choose a session JSON file", type=["json"])
 if uploaded is None:
-    st.write("Upload a session JSON file to review its file-change claims. Collected Git evidence will be added to that session.")
+    st.write("Upload a JSON session or extracted ChatGPT conversations.json. Collected Git evidence will be added to it.")
     st.stop()
 
 try:
-    session_data = json.load(uploaded)
-    if not isinstance(session_data, dict):
-        raise ValueError("The file must contain a JSON object at its top level.")
+    session_data = normalize_chat_export(json.load(uploaded))
     supplied_evidence = session_data.get("evidence", [])
     if not isinstance(supplied_evidence, list):
         raise ValueError("'evidence' must be a JSON list.")

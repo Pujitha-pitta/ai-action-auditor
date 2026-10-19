@@ -54,4 +54,8 @@ Supported file actions include created, added, modified, updated, edited, change
 
 ## Privacy and limitations
 
-The app processes the uploaded JSON and selected Git status locally and does not contact an AI service. It does not verify that evidence records are authentic or support exported ChatGPT/Codex history formats yet. Claim detection uses simple text patterns, so it can miss claims or interpret wording incorrectly. Treat results as review hints, not proof.
+The app processes the uploaded JSON and selected Git status locally and does not contact an AI service. ChatGPT export support handles text messages from the common `mapping`/`current_node` JSON layout; export formats can change, so this adapter should be checked against real exports. Non-text content is skipped. The tool does not verify that evidence records are authentic or support Codex history exports. Claim and command detection use simple patterns, so they can miss claims or flag harmless examples. Treat results as review hints, not proof. Chat exports can contain sensitive information; keep the file secure.
+
+## Use a ChatGPT data export
+
+Request an export in ChatGPT under **Settings → Data controls → Export data**, download the ZIP when it is ready, and extract it. Upload `conversations.json` in the app. If a large export contains numbered conversation JSON files instead, upload one of those files. The export may contain sensitive account and conversation data, so only use it on a computer you trust.

@@ -80,6 +80,92 @@ def normalize_path(value: str) -> str:
     return str(PurePosixPath(path)).casefold()
 
 
+def _text_from_export_message(message: Any) -> dict[str, str] | None:
+    """Convert a ChatGPT export message node to the auditor's simple format."""
+    if not isinstance(message, dict):
+        return None
+    author = message.get("author", {})
+    role = author.get("role") if isinstance(author, dict) else None
+    if role not in {"assistant", "user"}:
+        return None
+
+    content = message.get("content", {})
+    parts = content.get("parts", []) if isinstance(content, dict) else []
+    if not isinstance(parts, list):
+        parts = []
+    text_parts = [part for part in parts if isinstance(part, str)]
+    if not text_parts and isinstance(content, dict) and isinstance(content.get("text"), str):
+        text_parts = [content["text"]]
+    text = "\n".join(text_parts).strip()
+    return {"role": role, "content": text} if text else None
+
+
+def _messages_from_export_conversation(conversation: dict[str, Any]) -> list[dict[str, str]]:
+    """Read the selected message branch from one exported conversation."""
+    mapping = conversation.get("mapping")
+    if not isinstance(mapping, dict):
+        return []
+
+    current_node = conversation.get("current_node")
+    ordered_nodes: list[dict[str, Any]] = []
+    if isinstance(current_node, str) and current_node in mapping:
+        node_id = current_node
+        visited: set[str] = set()
+        while node_id in mapping and node_id not in visited:
+            visited.add(node_id)
+            node = mapping[node_id]
+            if not isinstance(node, dict):
+                break
+            ordered_nodes.append(node)
+            parent = node.get("parent")
+            if not isinstance(parent, str):
+                break
+            node_id = parent
+        ordered_nodes.reverse()
+    else:
+        ordered_nodes = [node for node in mapping.values() if isinstance(node, dict)]
+        ordered_nodes.sort(
+            key=lambda node: str((
+                (node.get("message") or {}).get("create_time")
+                if isinstance(node.get("message"), dict)
+                else None
+            ) or "")
+        )
+
+    messages = []
+    for node in ordered_nodes:
+        converted = _text_from_export_message(node.get("message"))
+        if converted:
+            messages.append(converted)
+    return messages
+
+
+def normalize_chat_export(payload: Any) -> dict[str, Any]:
+    """Accept the app's simple session JSON or ChatGPT conversations export JSON."""
+    if isinstance(payload, dict) and isinstance(payload.get("messages"), list):
+        return {"messages": payload["messages"], "evidence": payload.get("evidence", [])}
+
+    conversations = payload if isinstance(payload, list) else [payload]
+    normalized_messages: list[dict[str, str]] = []
+    for conversation in conversations:
+        if not isinstance(conversation, dict):
+            continue
+        if isinstance(conversation.get("messages"), list):
+            normalized_messages.extend(
+                message for message in conversation["messages"]
+                if isinstance(message, dict)
+            )
+        else:
+            normalized_messages.extend(_messages_from_export_conversation(conversation))
+
+    if not normalized_messages:
+        raise ValueError(
+            "No supported text messages found. Upload the extracted ChatGPT conversations.json "
+            "or a JSON session with a 'messages' list."
+        )
+    return {"messages": normalized_messages, "evidence": []}
+
+
 def collect_git_evidence(repo_path: str) -> list[dict[str, Any]]:
     """Read changed paths from a local Git working tree without reading file contents."""
     try:
