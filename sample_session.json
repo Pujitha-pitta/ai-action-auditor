@@ -1,0 +1,26 @@
+{
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "I updated `src/app.py` and created `README.md`."
+    },
+    {
+      "role": "assistant",
+      "content": "I also edited `src/missing.py`."
+    }
+  ],
+  "evidence": [
+    {
+      "type": "file_change",
+      "path": "src/app.py",
+      "operation": "modified",
+      "source": "example git diff record"
+    },
+    {
+      "type": "file_change",
+      "path": "README.md",
+      "operation": "created",
+      "source": "example git diff record"
+    }
+  ]
+}
